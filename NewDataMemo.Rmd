@@ -1,0 +1,58 @@
+---
+title: "Data Memo Part 2"
+author: "by Karan Buxey"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+library(corrplot)
+library(ggthemes)
+library(kableExtra)
+tidymodels_prefer()
+```
+
+# Introduction
+
+The purpose of this project is predict the winner of a chess match. The dataset includes information about multiple chess matches played on the popular website [lichess](https://lichess.org/). It can be found on Kaggle's website <https://www.kaggle.com/datasets/datasnaek/chess>.
+
+#Dataset
+
+```{r, include=FALSE}
+data <- read_csv("games.csv")
+data <- data %>% select(-white_id, -black_id, -moves)
+```
+Here are a few observations of the data we are working with.
+```{r}
+head(data)
+```
+
+There are 20,058 observations in the data frame total. I will be using 5 predictors. 4 numerical variables and 1 character variables.
+
+```{r}
+library(naniar)
+vis_miss(data)
+```
+
+There is 0 missing data in the csv file which I have went through and double checked.
+
+# Research Questions
+
+I am interested in predicting winner of the chess match based on the rating of the two players and more importantly, the opening used. The response variables are turns (amount of turns played), white_rating (rating of the player using white), black_rating (rating of the player using black), opening_eco (the 3 character code that represents the opening), opening_name (name of the opening), opening_ply (number of moves in the opening). The outcome variable will be winner which represents the winner of the match. This answer will be answered using a classification model. I believe my goal is mostly predictive because I am trying to use future data to predict the winner. 
+
+
+# Big takeaways
+Average number of moves in a match is 40 moves so anything greater than 40 can change in turns column to higher & anything less into lower to get more of a range rather than an exact. Should I change the values or keep as is?
+
+

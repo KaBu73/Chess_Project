@@ -1,0 +1,139 @@
+---
+title: "Predicting Chess Winners"
+author: "Karan Buxey"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+library(corrplot)
+library(ggthemes)
+library(kableExtra)
+library(naniar)
+tidymodels_prefer()
+```
+
+# Introduction
+
+## What is chess?
+
+Chess is a two-player strategy board game that has been played for centuries. The game is played on an 8x8 grid called a chessboard, and each player starts with 16 pieces: one king, one queen, two rooks, two knights, two bishops, and eight pawns. The objective of the game is to checkmate your opponent's king, which means putting the king in a position where it is under attack and there is no way to escape capture.
+
+Chess is a game of skill, strategy, and foresight. It requires players to think several moves ahead, consider various possibilities, and anticipate their opponent's moves. Chess contains openings which refers to the initial moves that sets the stage for the middle game, influencing the pawn structure, piece development, and overall strategy.
+
+## Why is this model relevant?
+
+Understanding chess openings involves not just memorizing moves but also grasping the underlying ideas, plans, and strategies associated with each opening. Players often choose openings based on their playing style and preferences. Opening theory is a vast and continually evolving field, with new ideas and variations regularly emerging in top-level play. Understanding what chess opening someone uses can help you counter their play and gain the upper hand in the middle game.
+
+This model will help players understand what chess openings counter other openings and the chess opening that will work better at certain ratings.
+
+# Exploring the Data
+
+The first thing that needs to be done is loading the raw data. The raw data comes from kaggle user Mitchell J who scraped the data from the website [lichess](https://lichess.org/). The dataset, that can be found [here](https://www.kaggle.com/datasets/datasnaek/chess), is not perfect for us to use directly so we will have to manipulate the data slightly to make it better to use.
+
+## Loading the Data
+
+We are going to grab the data from the csv file stored in the working directory. We are then going to remove the predictors that will not be very important in predicting what we want.
+
+```{r}
+data <- read_csv("games.csv") %>% 
+  select(-white_id, -black_id, -moves, -opening_name) %>% 
+  mutate(winner = factor(winner))
+```
+
+After creating a data frame called data with the predictors we want, we look at some of the properties of the data frame and make sure it worked.
+
+```{r}
+head(data) #Gives us the first 6 observations of our data.
+dim(data) #Dimensions of the data
+vis_miss(data) #Check the amount of missing data
+```
+
+These different tables, graphs, and information tells us a lot about our data. The first table shows the first 6 rows of our data frame which has all the predictors we want for the remainder of the project. The second piece of information tells us that we have 20,058 observations to use for our training and testing sets. Finally, the last visual shows we have 0 missing data which is great as we will not need to take that factor into consideration later. 
+
+In this data set, we will be using 5 predictors:
+
+-   `turns`: Amount of turns in the entire match
+
+-   `white_rating`: The skill rating of the user playing with the white pieces
+
+-   `black_rating`: The skill rating of the user playing with the black pieces
+
+-   `opening_eco`: The 3 character code that represents each opening in the Encyclopaedia of Chess Openings (ECO). 
+
+-   `opening_ply`: Amount of turns the opening takes
+
+## Visualizing the Data
+
+We can see the data through a correlation heat map which will help us understand the predictors' relationship with each other.
+
+```{r}
+data %>%
+  select(where(is.numeric)) %>%
+  cor() %>%
+  corrplot()
+```
+NEED TO INTRODUCE NEXT PLOTS HERE
+
+```{r}
+ggplot(data = data, aes(x = turns)) + 
+  geom_histogram(binwidth = 2, fill="lightgreen",     color="black") + 
+  labs(title = "Histogram of Turns Per Match", x = "Number of Turns", y = "Frequency") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(data = data, aes(y = fct_infreq(winner))) + 
+  geom_bar(fill = "lightgreen", color = "black") + 
+  labs(title = "Barplot of Winners", x = "Winner of the Match", y = "Number of Wins") + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+## Modeling the Data
+
+Now we get into actually modeling the data. The first thing we need to do is split the data We will split our data into training and testing sets, set up and create our recipe, and establish cross-validation within our models.
+
+# Splitting Data
+
+The first thing we are going to be doing is splitting the data into training and testing sets. We start with a random seed to ensure the split is the same everytime. We then need to choose a proportional split for the training and testing data which we will use 80/20 respectively. The reason we are using 80/20 is because there are a lot of observations we can train our model with.  
+
+```{r}
+set.seed(3456)
+
+chess_split <- initial_split(data, strata = winner, prop = 0.8)
+
+chess_train <- training(chess_split)
+chess_test <- testing(chess_split)
+```
+GOING TO DO WRITING OF STUFF LATER
+
+```{r}
+chess_recipe <- recipe(winner ~ turns + white_rating + black_rating + opening_eco + opening_ply, chess_train) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_center(all_predictors()) %>% 
+  step_scale(all_predictors())
+
+chess_recipe %>% 
+  prep() %>% 
+  bake(new_data = chess_train)
+```
+
+```{r}
+chess_folds <- vfold_cv(chess_train, v = 10, strata = winner)
+```
+
+```{r}
+save(chess_folds, chess_recipe, chess_train, chess_test, file = "Chess-Model.rda")
+```
+
+
+
+
