@@ -1,0 +1,10 @@
+•	turns: number of turns in the entire match
+•	winner: the side that won the game or if it was a draw
+•	white_id: white player ID
+•	white_rating: white player rating
+•	black_id: black player ID
+•	black_rating: black player rating
+•	moves: all moves in standard chess notation
+•	opening_eco: 1 letter standardised code for any opening
+•	opening_name: the name of the opening
+•	opening_ply: number of moves in the opening

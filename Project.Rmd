@@ -15,10 +15,17 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE,
 library(tidyverse)
 library(tidymodels)
 library(ggplot2)
-library(corrplot)
 library(ggthemes)
 library(kableExtra)
+library(corrr)
+library(corrplot)
+library(MASS)
+library(discrim)
+library(glmnet)
+library(themis)
+library(ranger)
 library(naniar)
+library(vip)
 tidymodels_prefer()
 ```
 
@@ -58,7 +65,7 @@ dim(data) #Dimensions of the data
 vis_miss(data) #Check the amount of missing data
 ```
 
-These different tables, graphs, and information tells us a lot about our data. The first table shows the first 6 rows of our data frame which has all the predictors we want for the remainder of the project. The second piece of information tells us that we have 20,058 observations to use for our training and testing sets. Finally, the last visual shows we have 0 missing data which is great as we will not need to take that factor into consideration later. 
+These different tables, graphs, and information tells us a lot about our data. The first table shows the first 6 rows of our data frame which has all the predictors we want for the remainder of the project. The second piece of information tells us that we have 20,058 observations to use for our training and testing sets. Finally, the last visual shows we have 0 missing data which is great as we will not need to take that factor into consideration later.
 
 In this data set, we will be using 5 predictors:
 
@@ -68,7 +75,7 @@ In this data set, we will be using 5 predictors:
 
 -   `black_rating`: The skill rating of the user playing with the black pieces
 
--   `opening_eco`: The 3 character code that represents each opening in the Encyclopaedia of Chess Openings (ECO). 
+-   `opening_eco`: The 1 letter code that represents different categories of chess openings in the Encyclopaedia of Chess Openings (ECO). A is Flank Openings, B is Semi-Open Games, C is Open Games, D is Closed Games, and E is Indian defenses.
 
 -   `opening_ply`: Amount of turns the opening takes
 
@@ -82,30 +89,61 @@ data %>%
   cor() %>%
   corrplot()
 ```
-NEED TO INTRODUCE NEXT PLOTS HERE
+
+Now we can look at different visualization plots to see how the predictors and outcome variables look.
+
+```{r}
+ggplot(data, aes(x = opening_eco)) +
+  geom_bar(fill = "lightgreen") +
+  labs(title = "The Distribution of Openings", x = "Opening Eco", y = "Frequency") +
+  theme_minimal()
+```
+
+As we can see the Open Game openings (C) are the most used with the Indian defenses (E) being the least used.
 
 ```{r}
 ggplot(data = data, aes(x = turns)) + 
-  geom_histogram(binwidth = 2, fill="lightgreen",     color="black") + 
+  geom_histogram(binwidth = 2, fill="lightgreen", color="black") + 
   labs(title = "Histogram of Turns Per Match", x = "Number of Turns", y = "Frequency") +
   theme(plot.title = element_text(hjust = 0.5))
+```
 
+This shows the amount of turns a game takes. There seems to be a high volume of games around 50 turns.
+
+```{r}
 ggplot(data = data, aes(y = fct_infreq(winner))) + 
   geom_bar(fill = "lightgreen", color = "black") + 
   labs(title = "Barplot of Winners", x = "Winner of the Match", y = "Number of Wins") + 
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
+This is the outcome variable that shows the winners of the games. We can see that white wins slightly more than black on average.
 
-## Modeling the Data
+```{r}
+ggplot(data = data, aes(white_rating)) +
+  geom_bar(color = "lightgreen") +
+  labs(x = "Rating", y = "Number of People", title = "Rating of Players Using White")
+```
+
+This shows what the rating of the players using white which are a wide range with a very high amount of players being around the 1500 rating.
+
+```{r}
+ggplot(data = data, aes(black_rating)) +
+  geom_bar(color = "lightgreen") +
+  labs(x = "Rating", y = "Number of People", title = "Rating of Players Using Black")
+```
+
+Similar to the previous graph, this shows what the rating of the players using black. This has a wide range rating and a high amount of players being around the 1500 rating.
+
+# Modeling the Data
 
 Now we get into actually modeling the data. The first thing we need to do is split the data We will split our data into training and testing sets, set up and create our recipe, and establish cross-validation within our models.
 
-# Splitting Data
+## Splitting Data
 
-The first thing we are going to be doing is splitting the data into training and testing sets. We start with a random seed to ensure the split is the same everytime. We then need to choose a proportional split for the training and testing data which we will use 80/20 respectively. The reason we are using 80/20 is because there are a lot of observations we can train our model with.  
+The first thing we are going to be doing is splitting the data into training and testing sets. We start with a random seed to ensure the split is the same every time. We then need to choose a proportional split for the training and testing data which we will use 80/20 respectively. The reason we are using 80/20 is because there are a lot of observations we can train our model with.
 
-```{r}
+```{r, eval=FALSE}
 set.seed(3456)
 
 chess_split <- initial_split(data, strata = winner, prop = 0.8)
@@ -113,9 +151,12 @@ chess_split <- initial_split(data, strata = winner, prop = 0.8)
 chess_train <- training(chess_split)
 chess_test <- testing(chess_split)
 ```
-GOING TO DO WRITING OF STUFF LATER
 
-```{r}
+## Creating the Recipe
+
+Now we craft our recipe by bringing together our predictors and our response variable which we will use for all the models. The recipe is shown below.
+
+```{r, eval=FALSE}
 chess_recipe <- recipe(winner ~ turns + white_rating + black_rating + opening_eco + opening_ply, chess_train) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_center(all_predictors()) %>% 
@@ -126,14 +167,122 @@ chess_recipe %>%
   bake(new_data = chess_train)
 ```
 
-```{r}
-chess_folds <- vfold_cv(chess_train, v = 10, strata = winner)
+## K-Fold Cross Validation
+
+We perform stratified cross validation stratifying over opening_eco using 5 folds.
+
+```{r, eval=FALSE}
+chess_folds <- vfold_cv(chess_train, v = 5, strata = opening_eco)
 ```
 
-```{r}
+```{r, include=FALSE, eval=FALSE}
 save(chess_folds, chess_recipe, chess_train, chess_test, file = "Chess-Model.rda")
 ```
 
+```{r, include=FALSE}
+load("Chess-Model.rda")
+```
 
+## Model Building
 
+Now we build our model using four different machine learning techniques on our recipe. The tuning of the models can take multiple hours so instead we run the model, save them, and then load them for future uses. Using roc_auc as the metric for performance, we can see which model works best for our data. For three of our models, we tune the parameters to optimize the results. Our knn model gets tuned to find which neighbor value works best. For elastic net logistic regression, we tune both mixture and penalty. Tuning mixture will help us find which balance between lasso and ridge works best. Tuning the penalty helps us find which level of regularization is best. The last model that uses tuning is random forest. We tune mtry to see how many variables get tested at each split of a tree. We tune trees to get the best amount of trees in the random forest. Lastly, we tune min_n which checks the smallest amount of variables used to create a node of a tree.  
 
+```{r, include=FALSE}
+#knn
+knn_model <- nearest_neighbor(neighbors = tune()) %>% 
+  set_engine("kknn") %>% 
+  set_mode("classification")
+
+knn_wflow <- workflow() %>% 
+  add_model(knn_model) %>% 
+  add_recipe(chess_recipe)
+
+#log
+log_model <- multinom_reg(penalty = 0) %>% 
+  set_mode("classification") %>% 
+  set_engine("glmnet")
+
+log_wflow <- workflow() %>% 
+  add_model(log_model) %>% 
+  add_recipe(chess_recipe)
+
+#enlr
+enlr_model <- multinom_reg(mixture = tune(), penalty = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("glmnet")
+
+enlr_wflow <- workflow() %>% 
+  add_model(enlr_model) %>% 
+  add_recipe(chess_recipe)
+
+#random forest
+rf_model <- rand_forest(mtry = tune(), 
+                           trees = tune(), 
+                           min_n = tune()) %>%
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+rf_wflow <- workflow() %>% 
+  add_model(rf_model) %>% 
+  add_recipe(chess_recipe)
+
+#grids
+knn_grid <- grid_regular(neighbors(range = c(1, 10)), levels = 10)
+enlr_grid <- grid_regular(penalty(), mixture(range = c(0, 1)), levels = 10)
+rf_grid <- grid_regular(mtry(range = c(1, 5)), 
+                        trees(range = c(200, 500)),
+                        min_n(range = c(10, 20)),
+                        levels = 10)
+```
+
+```{r, include=FALSE, eval=FALSE}
+knn_fit <- tune_grid(knn_wflow, resamples = chess_folds, grid = knn_grid)
+
+log_fit <- fit_resamples(log_wflow, chess_folds)
+
+enlr_fit <- tune_grid(enlr_wflow, resamples = chess_folds, grid = enlr_grid)
+
+rf_fit <- tune_grid(rf_wflow, resamples = chess_folds, grid = rf_grid)
+```
+
+```{r, include=FALSE, eval=FALSE}
+save(knn_fit, log_fit, enlr_fit, rf_fit, file = "Chess-Fit.rda")
+```
+
+```{r}
+load("Chess-Fit.rda")
+```
+
+## Results
+
+We now see how all the different models did with each parameter tuned.
+```{r}
+collect_metrics(knn_fit)
+collect_metrics(log_fit)
+collect_metrics(enlr_fit)
+collect_metrics(rf_fit)
+```
+Below we see all the best tuned models using roc_auc as the metric.
+
+```{r}
+show_best(enlr_fit, n=1)
+show_best(knn_fit, n=1)
+show_best(log_fit, n=1)
+show_best(rf_fit, n=1)
+```
+After seeing the best model is the random forest, we can now fit it to our testing data. 
+
+```{r}
+best_rf <- select_best(rf_fit, metric = "roc_auc")
+
+chess_final_wf <- finalize_workflow(rf_wflow, best_rf)
+chess_final_fit <- fit(chess_final_wf, data=chess_train)
+
+augment(chess_final_fit, new_data=chess_test) %>% 
+  roc_auc(winner, .pred_black:.pred_white)
+```
+After fitting our testing data, we can see that the roc auc value is 0.748 which is very good. 
+
+# Conclusion
+
+By the end of it, we can take that the best model to predict the winner of a chess match based on the opening move is random forest. Our knn model was the forst out of all of them with a 0.647 roc auc value. The suprising thing is the enlr and log models were extremely close with the enlr model being 4.89e-05 better. We could improve this furthur by fitting more models onto the data to find if there is a better model that will achieve a higher accuracy. One model that comes to mind is boosted trees. A big takeaway for me during the project was trying to understand how different openings get classified and what they mean. Putting that into perspective really made it interesting to then see which opening can lead to wins depening on certain factors like rating.  
